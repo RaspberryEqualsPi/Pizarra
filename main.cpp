@@ -7,8 +7,8 @@ int main() {
     const float penRadius = 2.0f;
 
     sf::RenderWindow window(sf::VideoMode({ windowWidth, windowHeight }), "SFML Whiteboard");
-    window.setFramerateLimit(120);
-
+    //window.setFramerateLimit(120);
+    
     std::vector<sf::CircleShape> strokes;
     bool drawing = false;
 
