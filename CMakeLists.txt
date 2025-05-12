@@ -23,6 +23,7 @@ target_link_libraries(Pizarra vorbis)
 target_link_libraries(Pizarra ogg)
 target_link_libraries(Pizarra sfml-network-s)
 target_link_libraries(Pizarra ws2_32)
+target_link_libraries(Pizarra tgui-s)
 target_link_libraries(Pizarra SelbaWard)
 
 set(CPACK_PROJECT_NAME ${PROJECT_NAME})
