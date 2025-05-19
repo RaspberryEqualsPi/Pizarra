@@ -24,6 +24,15 @@ public:
         : m_radius(radius), m_normalColor(normalColor), m_hoverColor(hoverColor), m_isHovered(false)
     {
         setSize({radius * 2, radius * 2});
+        setFocusable(true);
+        onMouseEnter([this](){
+            m_isHovered = true;
+            updateGraphics();
+        });
+        onMouseLeave([this](){
+            m_isHovered = false;
+            updateGraphics();
+        });
         updateGraphics();
     }
 
@@ -43,6 +52,16 @@ public:
         return m_hoverColor;
     }
 
+    void setNormalColor(sf::Color normalColor){
+        m_normalColor = normalColor;
+        updateGraphics();
+    }
+
+    void setHoverColor(sf::Color hoverColor){
+        m_hoverColor = hoverColor;
+        updateGraphics();
+    }
+
     void setOutline(sf::Color outlineColor, float outlineThickness){
         m_outlineColor = outlineColor;
         m_outlineThickness = outlineThickness;
@@ -59,26 +78,25 @@ public:
     }
 
 protected:
-    bool mouseOnWidget(tgui::Vector2f pos) const {
-        float dx = pos.x - m_radius;
-        float dy = pos.y - m_radius;
-        return (dx * dx + dy * dy) <= (m_radius * m_radius);
+    bool isMouseOnWidget(tgui::Vector2f pos) const override {
+        tgui::Vector2f mouseCoords = {pos.x - getPosition().x, pos.y - getPosition().y}; // make the mouse coordinates relative
+        //std::cout << "mouseOnWidget called at: " << mouseCoords.x << ", " << mouseCoords.y << "\n";
+        float dx = mouseCoords.x - (m_radius + m_outlineThickness);
+        float dy = mouseCoords.y - (m_radius + m_outlineThickness);
+        return ((dx * dx + dy * dy) <= (m_radius * m_radius));
     }
 
-    void mouseEnteredWidget() override {
-        m_isHovered = true;
-        updateGraphics();
-    }
+    /*void mouseEnteredWidget() override {
 
-    void mouseLeftWidget() override {
-        m_isHovered = false;
-        updateGraphics();
-    }
+    }*/
+
+    /*void mouseLeftWidget() override {
+
+    }*/
 
     bool leftMousePressed(tgui::Vector2f) {
         return m_signalClicked.emit(this);
     }
-
 private:
     void updateGraphics() {
         clear(sf::Color::Transparent);
@@ -115,6 +133,31 @@ public:
         this->onMouseLeave([this]() {
             m_mouseOnCanvas = false;
         });
+        onMousePress([this](){
+            //this->setFocused(true);
+            std::cout << "focusing\n";
+            sf::Vector2i rawMousePos = sf::Mouse::getPosition(*m_realWindow);
+            sf::Vector2f mousePos = this->mapPixelToCoords({ (float)(rawMousePos.x - getPosition().x), (float)(rawMousePos.y - getPosition().y) }); // take difference to make the position relative
+            m_drawing = true;
+            m_currentStroke.clear();
+            m_currentStrokeTriangles.clear();
+            m_lastPos = mousePos;
+            m_currentStroke.push_back(m_lastPos);
+        });
+        onMouseRelease([this](){
+            m_drawing = false;
+
+            // Draw current stroke to cached texture
+            if (m_currentStrokeTriangles.getVertexCount() != 0) {
+                m_cacheTexture.setActive(true);
+                m_cacheTexture.draw(m_currentStrokeTriangles);
+                m_cacheTexture.display();
+                m_cacheTexture.setActive(false);
+            }
+
+            m_currentStroke.clear();
+            m_currentStrokeTriangles.clear();
+        });
     }
 
     static Ptr create(sf::RenderWindow& realWindow, sf::Vector2f size, sf::Color strokeColor, float lineThickness, float spacing) {
@@ -137,7 +180,7 @@ public:
 
         if (m_drawing) {
             sf::Vector2i rawMousePos = sf::Mouse::getPosition(*m_realWindow);
-            sf::Vector2f currentPos = this->mapPixelToCoords({ static_cast<float>(rawMousePos.x), static_cast<float>(rawMousePos.y) });
+            sf::Vector2f currentPos = this->mapPixelToCoords({ (float)(rawMousePos.x - getPosition().x), (float)(rawMousePos.y - getPosition().y) }); // take difference to make the position relative
             float dist = std::hypot(currentPos.x - m_lastPos.x, currentPos.y - m_lastPos.y);
             int steps = std::max(1, static_cast<int>(dist / m_spacing));
 
@@ -163,31 +206,9 @@ public:
         this->display();
     }
 
-    void mousePress() {
-        if (m_mouseOnCanvas) {
-            sf::Vector2i rawMousePos = sf::Mouse::getPosition(*m_realWindow);
-            sf::Vector2f mousePos = this->mapPixelToCoords({ static_cast<float>(rawMousePos.x), static_cast<float>(rawMousePos.y) });
-            m_drawing = true;
-            m_currentStroke.clear();
-            m_currentStrokeTriangles.clear();
-            m_lastPos = mousePos;
-            m_currentStroke.push_back(m_lastPos);
-        } else {
-            m_drawing = false;
-        }
-    }
-
-    void mouseRelease() {
-        m_drawing = false;
-
-        // Draw current stroke to cached texture
-        if (m_currentStrokeTriangles.getVertexCount() != 0) {
-            m_cacheTexture.setActive(true);
-            m_cacheTexture.draw(m_currentStrokeTriangles);
-            m_cacheTexture.display();
-            m_cacheTexture.setActive(false);
-        }
-
+    void clearCanvas(){
+        m_cacheTexture.clear(sf::Color::White);
+        m_cacheTexture.display();
         m_currentStroke.clear();
         m_currentStrokeTriangles.clear();
     }
@@ -201,19 +222,7 @@ public:
     float getSpacing(){ return m_spacing; }
 
 protected:
-    void keyPressed(const tgui::Event::KeyEvent& event) override {
-        if (event.code == tgui::Event::KeyboardKey::C) {
-            std::cout << "'C' key pressed inside canvas!" << std::endl;
-            m_cacheTexture.clear(sf::Color::White);
-            m_cacheTexture.display();
-            m_currentStroke.clear();
-            m_currentStrokeTriangles.clear();
-        }
-    }
 
-    void mousePressed(tgui::Vector2f) {
-        setFocused(true); // Get focus when clicked
-    }
 
 private:
     sf::RenderWindow* m_realWindow;
@@ -228,7 +237,6 @@ private:
 
     std::vector<sf::Vector2f> m_currentStroke;
     sf::VertexArray m_currentStrokeTriangles{ sf::PrimitiveType::Triangles };
-
     // Helper to generate a thick line as two triangles
     std::vector<sf::Vertex> createThickLine(const sf::Vector2f& a, const sf::Vector2f& b, float thickness, sf::Color color) {
         sf::Vector2f direction = b - a;
@@ -257,7 +265,10 @@ int main() {
 
 
     tgui::Gui gui{window};
+    auto whiteBoardPanel = tgui::Panel::create({windowWidth, windowHeight - 100});
     auto whiteBoardCanvas = DrawingCanvas::create(window, {windowWidth, windowHeight - 100}, sf::Color::Black, 10.0f, 5.0f);
+    whiteBoardPanel->setFocusable(true);
+    //whiteBoardCanvas->setFocused(true);
     auto brushPanel = tgui::Panel::create({windowWidth, 100});
     brushPanel->setPosition({0, windowHeight - 100});
     // Set background color via renderer
@@ -265,10 +276,11 @@ int main() {
 
     sf::Color brushColors[] = {sf::Color::Black, sf::Color::White, sf::Color::Red, sf::Color::Yellow, sf::Color::Green, sf::Color::Blue, sf::Color::Magenta};
     CircleButton::Ptr brushButtons[sizeof(brushColors)/sizeof(sf::Color)];
+    whiteBoardPanel->add(whiteBoardCanvas);
     gui.add(brushPanel);
-    gui.add(whiteBoardCanvas);
+    gui.add(whiteBoardPanel);
     if(true){ // keep these out of the function's overall scope, and avoid conflict with the for loop ahead
-        auto button = CircleButton::create(20, sf::Color::Black, sf::Color(8, 8, 8));
+        auto button = CircleButton::create(20, sf::Color::Black, sf::Color(16, 16, 16));
         button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 150, (float)windowHeight - 70.f});
         button->getSignal("Clicked").connect([&brushButtons, button, brushColors, &whiteBoardCanvas, &gui](){
             for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
@@ -279,6 +291,9 @@ int main() {
             auto colorPicker = tgui::ColorPicker::create("Custom Brush Color");
             colorPicker->onClosing([&whiteBoardCanvas, colorPicker](){
                 whiteBoardCanvas->setStrokeColor(colorPicker->getColor());
+            });
+            colorPicker->onColorChange([&button, colorPicker](){
+                button->setNormalColor(colorPicker->getColor());
             });
             gui.add(colorPicker);
         });
@@ -303,11 +318,9 @@ int main() {
             gui.handleEvent(*event);
             if (event->is<sf::Event::Closed>())
                 window.close();
-            if (event->is<sf::Event::MouseButtonPressed>() && event->getIf<sf::Event::MouseButtonPressed>()->button == sf::Mouse::Button::Left){
-                whiteBoardCanvas->mousePress();
-            }
-            if (event->is<sf::Event::MouseButtonReleased>() && event->getIf<sf::Event::MouseButtonReleased>()->button == sf::Mouse::Button::Left){
-                whiteBoardCanvas->mouseRelease();
+            if (event->is<sf::Event::KeyPressed>() && event->getIf<sf::Event::KeyPressed>()->code == sf::Keyboard::Key::C) {
+                std::cout << "clear\n";
+                whiteBoardCanvas->clearCanvas();
             }
             whiteBoardCanvas->updateGraphics();
         }
