@@ -265,23 +265,32 @@ int main() {
 
 
     tgui::Gui gui{window};
-    auto whiteBoardPanel = tgui::Panel::create({windowWidth, windowHeight - 100});
-    auto whiteBoardCanvas = DrawingCanvas::create(window, {windowWidth, windowHeight - 100}, sf::Color::Black, 10.0f, 5.0f);
-    whiteBoardPanel->setFocusable(true);
-    //whiteBoardCanvas->setFocused(true);
+    auto whiteBoardCanvas = DrawingCanvas::create(window, {windowWidth, windowHeight - 100}, sf::Color::Black, 10.f, 5.0f);
+    //whiteBoardPanel->setFocusable(true);
     auto brushPanel = tgui::Panel::create({windowWidth, 100});
     brushPanel->setPosition({0, windowHeight - 100});
     // Set background color via renderer
     brushPanel->getRenderer()->setBackgroundColor(tgui::Color(32, 32, 32)); 
 
+    auto brushSizeSlider = tgui::Slider::create(1, 20);
+    brushSizeSlider->setPosition(30, (100 - brushSizeSlider->getSize().y)/2 - 10);
+    auto brushSizeLabel = tgui::Label::create("Brush Size");
+    brushSizeLabel->getRenderer()->setTextColor(tgui::Color::White);
+    brushSizeLabel->setPosition(30 + (brushSizeSlider->getSize().x - brushSizeLabel->getSize().x)/2, 10);
+    brushPanel->add(brushSizeLabel);
+    brushPanel->add(brushSizeSlider);
+
     sf::Color brushColors[] = {sf::Color::Black, sf::Color::White, sf::Color::Red, sf::Color::Yellow, sf::Color::Green, sf::Color::Blue, sf::Color::Magenta};
     CircleButton::Ptr brushButtons[sizeof(brushColors)/sizeof(sf::Color)];
-    whiteBoardPanel->add(whiteBoardCanvas);
     gui.add(brushPanel);
-    gui.add(whiteBoardPanel);
+    gui.add(whiteBoardCanvas);
+
+    brushSizeSlider->onValueChange([&brushSizeSlider, &whiteBoardCanvas](){
+        whiteBoardCanvas->setLineThickness(brushSizeSlider->getValue());
+    });
     if(true){ // keep these out of the function's overall scope, and avoid conflict with the for loop ahead
         auto button = CircleButton::create(20, sf::Color::Black, sf::Color(16, 16, 16));
-        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 150, (float)windowHeight - 70.f});
+        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 100, 30.f});
         button->getSignal("Clicked").connect([&brushButtons, button, brushColors, &whiteBoardCanvas, &gui](){
             for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
                 brushButtons[j]->getSize();
@@ -297,11 +306,11 @@ int main() {
             });
             gui.add(colorPicker);
         });
-        gui.add(button);
+        brushPanel->add(button);
     }
     for (int i = 0; i < sizeof(brushColors)/sizeof(sf::Color); i++){
         auto button = CircleButton::create(20, brushColors[i], brushColors[i]);
-        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 100 + i*50.f, (float)windowHeight - 70.f});
+        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 50 + i*50.f, 30.f});
         button->getSignal("Clicked").connect([&brushButtons, i, brushColors, &whiteBoardCanvas](){
             for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
                 brushButtons[j]->getSize();
@@ -311,7 +320,7 @@ int main() {
             whiteBoardCanvas->setStrokeColor(brushButtons[i]->getNormalColor());
         });
         brushButtons[i] = button;
-        gui.add(button);
+        brushPanel->add(button);
     } 
     while (window.isOpen()) {
         while (const std::optional event = window.pollEvent()) {
@@ -328,6 +337,5 @@ int main() {
         gui.draw();
         window.display();
     }
-
     return 0;
 }
