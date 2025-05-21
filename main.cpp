@@ -1,6 +1,7 @@
 #include <SFML/Graphics.hpp>
 #include <TGUI/TGUI.hpp>
 #include <TGUI/Backend/SFML-Graphics.hpp>
+#include "gfx/eraser.h"
 #include <iostream>
 #include <vector>
 #include <cmath>
@@ -20,8 +21,8 @@ class CircleButton : public tgui::CanvasSFML {
 public:
     using Ptr = std::shared_ptr<CircleButton>;
 
-    CircleButton(float radius, sf::Color normalColor = sf::Color::Blue, sf::Color hoverColor = sf::Color::Green)
-        : m_radius(radius), m_normalColor(normalColor), m_hoverColor(hoverColor), m_isHovered(false)
+    CircleButton(float radius, sf::Color normalColor = sf::Color::Blue, sf::Color hoverColor = sf::Color::Green, bool imageEnabled = false)
+        : m_radius(radius), m_normalColor(normalColor), m_hoverColor(hoverColor), m_isHovered(false), m_imageEnabled(imageEnabled)
     {
         setSize({radius * 2, radius * 2});
         setFocusable(true);
@@ -33,23 +34,40 @@ public:
             m_isHovered = false;
             updateGraphics();
         });
+        m_buttonLabel = tgui::Label::create();
+        m_buttonLabel->onSizeChange([this](){updateGraphics();});
+        m_buttonLabel->onPositionChange([this](){updateGraphics();});
         updateGraphics();
     }
 
-    static Ptr create(float radius, sf::Color normalColor = sf::Color::Blue, sf::Color hoverColor = sf::Color::Green) {
-        return std::make_shared<CircleButton>(radius, normalColor, hoverColor);
+    static Ptr create(float radius, sf::Color normalColor = sf::Color::Blue, sf::Color hoverColor = sf::Color::Green, bool imageEnabled = false) {
+        return std::make_shared<CircleButton>(radius, normalColor, hoverColor, imageEnabled);
     }
 
-    void setPosition(sf::Vector2f pos) {
-        tgui::CanvasSFML::setPosition(tgui::Layout2d(pos));
+    void setImageEnabled(bool imageEnabled){
+        m_imageEnabled = imageEnabled;
+        updateGraphics();
+    }
+
+    void setImage(sf::Texture& image){
+        m_buttonImage = image;
+        updateGraphics();
+    }
+
+    tgui::Label::Ptr getLabel(){
+        return m_buttonLabel;
     }
 
     sf::Color getNormalColor(){
-        return m_normalColor;
+       return m_normalColor;
     }
 
     sf::Color getHoverColor(){
         return m_hoverColor;
+    }
+
+    float getOutlineThickness(){
+        return m_outlineThickness;
     }
 
     void setNormalColor(sf::Color normalColor){
@@ -69,6 +87,37 @@ public:
         setPosition({getPosition().x - m_outlineThickness + m_totalOffset, getPosition().y - m_outlineThickness + m_totalOffset}); // totalOffset term for correction
         m_totalOffset = m_outlineThickness;
         updateGraphics();
+    }
+
+    void updateGraphics() {
+        clear(sf::Color::Transparent);
+        sf::CircleShape circle(m_radius);
+        if(getParent()){
+            auto widgets = getParent()->getWidgets();
+            bool hasButtonLabel = false;
+            for (auto widget : widgets){
+                if (widget == m_buttonLabel){
+                    hasButtonLabel = true;
+                }
+            }
+            if (!hasButtonLabel){
+                getParent()->add(m_buttonLabel);
+                std::cout << "added buttonLabel\n";
+            }
+        }
+        circle.setPointCount(100); // Smooth circle
+        circle.setFillColor(m_isHovered ? m_hoverColor : m_normalColor);
+        circle.setPosition({m_outlineThickness, m_outlineThickness});
+        circle.setOutlineThickness(m_outlineThickness);
+        circle.setOutlineColor(m_outlineColor);
+        m_buttonLabel->setPosition({getPosition().x + m_outlineThickness + m_radius - m_buttonLabel->getSize().x/2, getPosition().y + m_outlineThickness + m_radius - m_buttonLabel->getSize().y/2});
+        draw(circle);
+        if (m_imageEnabled){
+            sf::Sprite drawSprite(m_buttonImage);
+            drawSprite.setPosition({m_outlineThickness + m_radius - m_buttonImage.getSize().x/2, m_outlineThickness + m_radius - m_buttonImage.getSize().y/2});
+            draw(drawSprite);
+        }
+        display();
     }
 
     tgui::Signal& getSignal(tgui::String signalName) override {
@@ -98,24 +147,15 @@ protected:
         return m_signalClicked.emit(this);
     }
 private:
-    void updateGraphics() {
-        clear(sf::Color::Transparent);
-        sf::CircleShape circle(m_radius);
-        circle.setPointCount(100); // Smooth circle
-        circle.setFillColor(m_isHovered ? m_hoverColor : m_normalColor);
-        circle.setPosition({m_outlineThickness, m_outlineThickness});
-        circle.setOutlineThickness(m_outlineThickness);
-        circle.setOutlineColor(m_outlineColor);
-        draw(circle);
-        display();
-    }
-
     float m_radius;
     float m_outlineThickness = 0;
     bool m_isHovered;
+    bool m_imageEnabled = false;
+    sf::Texture m_buttonImage;
     sf::Color m_outlineColor;
     sf::Color m_normalColor;
     sf::Color m_hoverColor;
+    tgui::Label::Ptr m_buttonLabel;
     float m_totalOffset = 0;
     tgui::Signal m_signalClicked{"Clicked"};
 };
@@ -288,34 +328,59 @@ int main() {
     brushSizeSlider->onValueChange([&brushSizeSlider, &whiteBoardCanvas](){
         whiteBoardCanvas->setLineThickness(brushSizeSlider->getValue());
     });
-    if(true){ // keep these out of the function's overall scope, and avoid conflict with the for loop ahead
-        auto button = CircleButton::create(20, sf::Color::Black, sf::Color(16, 16, 16));
-        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 100, 30.f});
-        button->getSignal("Clicked").connect([&brushButtons, button, brushColors, &whiteBoardCanvas, &gui](){
+    auto customBrushButton = CircleButton::create(20, sf::Color::Black, sf::Color(16, 16, 16));
+    auto eraserButton = CircleButton::create(20, sf::Color::Red, sf::Color(245, 0, 0), true);
+    if(true){ // keep these out of the function's overall scope, and avoid conflict with the for loop ahead (add custom brush button)
+        customBrushButton->getLabel()->setText("Custom");
+        customBrushButton->getLabel()->getRenderer()->setTextColor(tgui::Color::White);
+        customBrushButton->getLabel()->setTextSize(10);
+        customBrushButton->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 100, 30.f});
+        customBrushButton->getSignal("Clicked").connect([&brushButtons, eraserButton, customBrushButton, brushColors, &whiteBoardCanvas, &gui](){
             for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
                 brushButtons[j]->getSize();
                 brushButtons[j]->setOutline(sf::Color::White, 0);
             }
-            button->setOutline(sf::Color::White, 3);
+            eraserButton->setOutline(sf::Color::White, 0);
+            customBrushButton->setOutline(sf::Color::White, 3);
             auto colorPicker = tgui::ColorPicker::create("Custom Brush Color");
             colorPicker->onClosing([&whiteBoardCanvas, colorPicker](){
                 whiteBoardCanvas->setStrokeColor(colorPicker->getColor());
             });
-            colorPicker->onColorChange([&button, colorPicker](){
-                button->setNormalColor(colorPicker->getColor());
+            colorPicker->onColorChange([&customBrushButton, colorPicker](){
+                customBrushButton->setNormalColor(colorPicker->getColor());
             });
             gui.add(colorPicker);
         });
-        brushPanel->add(button);
+        brushPanel->add(customBrushButton);
+        customBrushButton->updateGraphics();
     }
-    for (int i = 0; i < sizeof(brushColors)/sizeof(sf::Color); i++){
-        auto button = CircleButton::create(20, brushColors[i], brushColors[i]);
-        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 50 + i*50.f, 30.f});
-        button->getSignal("Clicked").connect([&brushButtons, i, brushColors, &whiteBoardCanvas](){
+    if(true){ // add eraser button (technically just a white brush, but the user won't know that)
+        eraserButton->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 170, 30.f});
+        sf::Texture eraserIconTex;
+        eraserIconTex.loadFromMemory(eraser_png, sizeof(eraser_png));
+        eraserButton->setImage(eraserIconTex);
+        eraserButton->getSignal("Clicked").connect([&brushButtons, eraserButton, customBrushButton, brushColors, &whiteBoardCanvas, &gui](){
             for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
                 brushButtons[j]->getSize();
                 brushButtons[j]->setOutline(sf::Color::White, 0);
             }
+            customBrushButton->setOutline(sf::Color::White, 0);
+            eraserButton->setOutline(sf::Color::White, 3);
+            whiteBoardCanvas->setStrokeColor(sf::Color::White);
+        });
+        brushPanel->add(eraserButton);
+        //button->updateGraphics();
+    }
+    for (int i = 0; i < sizeof(brushColors)/sizeof(sf::Color); i++){
+        auto button = CircleButton::create(20, brushColors[i], brushColors[i]);
+        button->setPosition({windowWidth - 50*sizeof(brushColors)/sizeof(sf::Color) - 50 + i*50.f, 30.f});
+        button->getSignal("Clicked").connect([&brushButtons, eraserButton, customBrushButton, i, brushColors, &whiteBoardCanvas](){
+            for (int j = 0; j < sizeof(brushColors)/sizeof(sf::Color); j++){
+                brushButtons[j]->getSize();
+                brushButtons[j]->setOutline(sf::Color::White, 0);
+            }
+            eraserButton->setOutline(sf::Color::White, 0);
+            customBrushButton->setOutline(sf::Color::White, 0);
             brushButtons[i]->setOutline(sf::Color::White, 3);
             whiteBoardCanvas->setStrokeColor(brushButtons[i]->getNormalColor());
         });
